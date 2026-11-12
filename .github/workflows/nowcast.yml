@@ -52,11 +52,20 @@ jobs:
           mkdir -p data
           lftp -c "set ftp:ssl-allow yes; set net:max-retries 2; set net:timeout 20; open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\"; cd \"${FTP_DIR:-/}\"; get data/forecast.json -o data/forecast.json"
 
+      # GeoSphere hängt immer wieder (~5 % der Läufe). Dann diesen Lauf auslassen statt rot werden
+      # (sonst kommt je Ausfall eine Mail); online bleibt der letzte Nowcast, der nächste Lauf holt nach.
       - name: Nowcast
+        id: now
         timeout-minutes: 5
+        continue-on-error: true
         run: uv run scripts/fetch_nowcast.py
 
+      - name: Ausgelassen?
+        if: steps.now.outcome != 'success'
+        run: echo "::warning::GeoSphere nicht erreichbar, Lauf ausgelassen (nächster in 15 min)"
+
       - name: Hochladen (Bilder zuerst, Index zuletzt)
+        if: steps.now.outcome == 'success'
         run: |
           lftp -c "set ftp:ssl-allow yes; set net:max-retries 3; set net:timeout 30; open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\"; cd \"${FTP_DIR:-/}\"; put -O data data/nowcast.binz; put -O data data/radar.binz; put -O data data/nowt.binz; put -O data data/nowcast.json"
 
